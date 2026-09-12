@@ -326,6 +326,7 @@
       <div class="links-row">
         <button class="link-btn" id="inlineRestartBtn">Reiniciar</button>
         <button class="link-btn" id="modeSwitchBtn">Cambiar modo</button>
+        <button class="link-btn" id="muteBtn">🔊 Música</button>
       </div>
     </header>
 
@@ -348,7 +349,7 @@
 
     <div class="board" id="board"></div>
 
-    <footer>Líneas horizontales, verticales o en diagonal.</footer>
+    <footer>Líneas horizontales, verticales o en diagonal. Los comodines ✦ completan cualquier fila.</footer>
   </div>
 
   <div class="toast" id="toast"></div>
@@ -392,15 +393,31 @@
     { id:3, name:'Gris',     base:'#9AA3B2', tint:'#E9EDF2', earInner:'#F2A6C1', eye:'#2C2A33', nose:'#B4718A', line:'#3A3A42', whisker:'#F3F5F8', pattern:'solid',   accent:'#7B8494' },
     { id:4, name:'Naranja',  base:'#FF9F5A', tint:'#FFE6D2', earInner:'#FFD3AE', eye:'#3A2740', nose:'#B4718A', line:'#5B4A63', whisker:'#C9631E', pattern:'patch',   accent:'#FFF6EC' },
     { id:5, name:'Manchado', base:'#F2A6C1', tint:'#FDEAF1', earInner:'#F7C6DA', eye:'#3A2740', nose:'#B4718A', line:'#5B4A63', whisker:'#C9789A', pattern:'spots',   accent:'#A9673D' },
+    { id:6, name:'Comodín',  base:null,     tint:'#F6EFFF', earInner:'#FFFFFF', eye:'#3A2740', nose:'#B4718A', line:'#5B4A63', whisker:'#9A7FBF', pattern:'joker',   accent:'#FFFFFF' },
   ];
+  const JOKER_ID = 6;
+  const JOKER_CHANCE = 0.04;
+  let jokerGradCounter = 0;
 
   function catSVG(t){
-    const earL = `<path d="M22,34 L33,9 L43,37 Z" fill="${t.base}"/>`;
-    const earR = `<path d="M78,34 L67,9 L57,37 Z" fill="${t.base}"/>`;
+    let defs = '';
+    let base = t.base;
+    if(t.pattern === 'joker'){
+      const gid = 'jokerGrad' + (jokerGradCounter++);
+      defs = `<defs><linearGradient id="${gid}" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#FF9CEE"/>
+        <stop offset="35%" stop-color="#B18CFF"/>
+        <stop offset="70%" stop-color="#8CD9FF"/>
+        <stop offset="100%" stop-color="#FFE28C"/>
+      </linearGradient></defs>`;
+      base = `url(#${gid})`;
+    }
+    const earL = `<path d="M22,34 L33,9 L43,37 Z" fill="${base}"/>`;
+    const earR = `<path d="M78,34 L67,9 L57,37 Z" fill="${base}"/>`;
     const earLInner = `<path d="M27,30 L33,17 L38,32 Z" fill="${t.earInner}"/>`;
     const earRInner = `<path d="M73,30 L67,17 L62,32 Z" fill="${t.earInner}"/>`;
     const headOutline = t.pattern === 'outline' ? `stroke="${t.accent}" stroke-width="2"` : '';
-    const head = `<circle cx="50" cy="56" r="34" fill="${t.base}" ${headOutline}/>`;
+    const head = `<circle cx="50" cy="56" r="34" fill="${base}" ${headOutline}/>`;
 
     let pattern = '';
     if(t.pattern === 'stripes'){
@@ -421,6 +438,12 @@
       </g>`;
     } else if(t.pattern === 'patch'){
       pattern = `<ellipse cx="50" cy="76" rx="16" ry="11" fill="${t.accent}"/>`;
+    } else if(t.pattern === 'joker'){
+      pattern = `<g fill="#FFFFFF" font-size="10" font-family="sans-serif">
+        <text x="24" y="35">✦</text>
+        <text x="63" y="30">✦</text>
+        <text x="45" y="80">✦</text>
+      </g>`;
     }
 
     const eyes = `<g>
@@ -439,6 +462,7 @@
     </g>`;
 
     return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      ${defs}
       <circle cx="50" cy="56" r="46" fill="${t.tint}"/>
       ${earL}${earR}${earLInner}${earRInner}
       ${head}
@@ -468,6 +492,7 @@
   const overlayModeSwitchBtn = document.getElementById('overlayModeSwitchBtn');
   const subTextEl = document.getElementById('subText');
   const timebarOuterEl = document.querySelector('.timebar-outer');
+  const muteBtn = document.getElementById('muteBtn');
   let currentMode = 'classic';
 
   const MODE_COPY = {
@@ -491,7 +516,24 @@
   let timerId = null, running = false;
   let dragging = false, startCell = null, currentPath = [];
 
-  function randType(){ return Math.floor(Math.random()*TYPES.length); }
+  function randType(){
+    if(Math.random() < JOKER_CHANCE) return JOKER_ID;
+    return Math.floor(Math.random()*(TYPES.length-1));
+  }
+
+  function typesCompatible(types){
+    let target = null;
+    for(const t of types){
+      if(t === JOKER_ID) continue;
+      if(target === null) target = t;
+      else if(target !== t) return false;
+    }
+    return true;
+  }
+
+  function pathIsValid(path){
+    return typesCompatible(path.map(p => grid[p.row][p.col]));
+  }
 
   function boardHasMove(g){
     const dirs = [[0,1],[1,0],[1,1],[1,-1]];
@@ -502,7 +544,7 @@
         for(const [dr,dc] of dirs){
           const r2=r+dr, c2=c+dc, r3=r+2*dr, c3=c+2*dc;
           if(r3<0||r3>=ROWS||c3<0||c3>=COLS) continue;
-          if(g[r2][c2] === type && g[r3][c3] === type) return true;
+          if(typesCompatible([type, g[r2][c2], g[r3][c3]])) return true;
         }
       }
     }
@@ -586,13 +628,12 @@
   }
 
   function applyHighlight(path){
-    const startType = grid[path[0].row][path[0].col];
-    const allSame = path.every(p => grid[p.row][p.col] === startType);
+    const valid = pathIsValid(path);
     for(const p of path){
       const el = cellEls[p.row][p.col];
-      el.classList.add(allSame ? 'sel-ok' : 'sel-bad');
+      el.classList.add(valid ? 'sel-ok' : 'sel-bad');
     }
-    return allSame;
+    return valid;
   }
 
   function onDown(x, y){
@@ -621,10 +662,9 @@
     if(!dragging) return;
     dragging = false;
     const path = currentPath;
-    const startType = grid[path[0].row][path[0].col];
-    const allSame = path.every(p => grid[p.row][p.col] === startType);
+    const valid = pathIsValid(path);
     clearHighlight();
-    if(allSame && path.length >= 3){
+    if(valid && path.length >= 3){
       resolveMatch(path);
     }
   }
@@ -643,7 +683,8 @@
   }
 
   function resolveMatch(path){
-    const pts = path.length * 10 + (path.length >= 5 ? 20 : 0);
+    const jokerCount = path.filter(p => grid[p.row][p.col] === JOKER_ID).length;
+    const pts = path.length * 10 + (path.length >= 5 ? 20 : 0) + jokerCount * 5;
     score += pts;
     scoreEl.textContent = score;
     if(score > best){ best = score; bestEl.textContent = best; }
@@ -709,6 +750,8 @@
   }
 
   function startGame(mode){
+    ensureAudio();
+    if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     currentMode = mode;
     subTextEl.textContent = MODE_COPY[mode];
     score = 0;
@@ -759,6 +802,156 @@
   modeSwitchBtn.addEventListener('click', backToModeSelect);
   overlayModeSwitchBtn.addEventListener('click', backToModeSelect);
   restartBtn.addEventListener('click', () => startGame(currentMode));
+
+  // ---- Música lofi (generada con Web Audio API, sin archivos externos) ----
+  let audioCtx = null;
+  let masterGain = null;
+  let muted = false;
+  try { muted = localStorage.getItem('gatifila_muted') === '1'; } catch(e) {}
+
+  const BPM = 76;
+  const BEAT = 60 / BPM;
+  const CHORDS = [
+    [220.00, 261.63, 329.63, 392.00], // Am7
+    [293.66, 349.23, 440.00, 523.25], // Dm7
+    [196.00, 246.94, 293.66, 349.23], // G7
+    [261.63, 329.63, 392.00, 493.88], // Cmaj7
+  ];
+
+  function updateMuteBtn(){
+    muteBtn.textContent = muted ? '🔇 Música' : '🔊 Música';
+  }
+  updateMuteBtn();
+
+  function ensureAudio(){
+    if(audioCtx) return;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if(!Ctx) return;
+    audioCtx = new Ctx();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = muted ? 0 : 0.32;
+    masterGain.connect(audioCtx.destination);
+    startVinylCrackle();
+    startScheduler();
+  }
+
+  function playPad(freqs, startTime, dur){
+    const padGain = audioCtx.createGain();
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 1100;
+    padGain.connect(filter);
+    filter.connect(masterGain);
+    const attack = 1.2, release = 1.8;
+    padGain.gain.setValueAtTime(0, startTime);
+    padGain.gain.linearRampToValueAtTime(0.18, startTime + attack);
+    padGain.gain.setValueAtTime(0.18, Math.max(startTime + attack, startTime + dur - release));
+    padGain.gain.linearRampToValueAtTime(0, startTime + dur);
+    freqs.forEach(f => {
+      [-3, 3].forEach(detune => {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'triangle';
+        osc.frequency.value = f;
+        osc.detune.value = detune;
+        osc.connect(padGain);
+        osc.start(startTime);
+        osc.stop(startTime + dur + 0.05);
+      });
+    });
+  }
+
+  function playKick(time){
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(140, time);
+    osc.frequency.exponentialRampToValueAtTime(45, time + 0.15);
+    g.gain.setValueAtTime(0.5, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+    osc.connect(g);
+    g.connect(masterGain);
+    osc.start(time);
+    osc.stop(time + 0.2);
+  }
+
+  function playHat(time){
+    const bufferSize = Math.floor(audioCtx.sampleRate * 0.05);
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for(let i=0;i<bufferSize;i++) data[i] = (Math.random()*2-1) * (1 - i/bufferSize);
+    const src = audioCtx.createBufferSource();
+    src.buffer = buffer;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 6000;
+    const g = audioCtx.createGain();
+    g.gain.value = 0.06;
+    src.connect(filter);
+    filter.connect(g);
+    g.connect(masterGain);
+    src.start(time);
+  }
+
+  function scheduleBar(chord, barStart){
+    playPad(chord, barStart, BEAT * 4 + 0.3);
+    for(let i=0;i<4;i++){
+      const t = barStart + i * BEAT;
+      playHat(t);
+      if(i === 0 || i === 2) playKick(t);
+    }
+  }
+
+  function startScheduler(){
+    let barIndex = 0;
+    let nextBarTime = audioCtx.currentTime + 0.15;
+    setInterval(() => {
+      while(nextBarTime < audioCtx.currentTime + 1.0){
+        scheduleBar(CHORDS[barIndex % CHORDS.length], nextBarTime);
+        nextBarTime += BEAT * 4;
+        barIndex++;
+      }
+    }, 200);
+  }
+
+  function startVinylCrackle(){
+    const dur = 3;
+    const bufferSize = Math.floor(audioCtx.sampleRate * dur);
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for(let i=0;i<bufferSize;i++){
+      let sample = (Math.random()*2-1) * 0.15;
+      if(Math.random() < 0.0008) sample = (Math.random()*2-1) * 0.8;
+      data[i] = sample;
+    }
+    const src = audioCtx.createBufferSource();
+    src.buffer = buffer;
+    src.loop = true;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 3500;
+    filter.Q.value = 0.6;
+    const g = audioCtx.createGain();
+    g.gain.value = 0.05;
+    src.connect(filter);
+    filter.connect(g);
+    g.connect(masterGain);
+    src.start();
+  }
+
+  function setMuted(m){
+    muted = m;
+    try { localStorage.setItem('gatifila_muted', m ? '1' : '0'); } catch(e) {}
+    if(masterGain){
+      masterGain.gain.linearRampToValueAtTime(m ? 0 : 0.32, audioCtx.currentTime + 0.15);
+    }
+    updateMuteBtn();
+  }
+
+  muteBtn.addEventListener('click', () => {
+    ensureAudio();
+    if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    setMuted(!muted);
+  });
 })();
 </script>
 </body>
