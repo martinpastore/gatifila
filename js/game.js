@@ -43,6 +43,9 @@ let score = 0, best = 0, timeLeft = GAME_SECONDS;
 let timerId = null, running = false;
 let dragging = false, startCell = null, currentPath = [];
 let toastTimer = null;
+let hintCells = [];
+let hintTimer = null;
+const HINT_DELAY = 8000;
 
 // ---- Toast ----
 function showToast(msg){
@@ -86,6 +89,50 @@ function boardHasMove(g){
     }
   }
   return false;
+}
+
+function findHintPath(){
+  const dirs = [[0,1],[1,0],[1,1],[1,-1]];
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      const type = grid[r][c];
+      if(type === null) continue;
+      for(const [dr,dc] of dirs){
+        const r2=r+dr, c2=c+dc, r3=r+2*dr, c3=c+2*dc;
+        if(r3<0||r3>=ROWS||c3<0||c3>=COLS) continue;
+        if(typesCompatible([type, grid[r2][c2], grid[r3][c3]])){
+          return [{ row:r, col:c }, { row:r2, col:c2 }, { row:r3, col:c3 }];
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function clearHint(){
+  for(const p of hintCells){
+    const el = cellEls[p.row] && cellEls[p.row][p.col];
+    if(el) el.classList.remove('hint');
+  }
+  hintCells = [];
+}
+
+function showHint(){
+  if(!running) return;
+  const path = findHintPath();
+  if(!path) return;
+  hintCells = path;
+  for(const p of path){
+    cellEls[p.row][p.col].classList.add('hint');
+  }
+}
+
+function resetHintTimer(){
+  clearHint();
+  clearTimeout(hintTimer);
+  if(running){
+    hintTimer = setTimeout(showHint, HINT_DELAY);
+  }
 }
 
 function randomGrid(){
@@ -179,6 +226,7 @@ function onDown(x, y){
   if(!running) return;
   const c = cellFromPoint(x, y);
   if(!c) return;
+  resetHintTimer();
   dragging = true;
   startCell = c;
   clearHighlight();
@@ -249,6 +297,7 @@ function resolveMatch(path){
     if(running && !boardHasMove(grid)){
       setTimeout(reshuffleBoard, 320);
     }
+    resetHintTimer();
   }, 260);
 }
 
@@ -256,6 +305,7 @@ function reshuffleBoard(){
   buildGridData();
   renderBoard();
   showToast('Sin jugadas posibles — ¡grilla nueva!');
+  resetHintTimer();
 }
 
 function collapseColumn(col){
@@ -320,11 +370,14 @@ function startGame(mode){
     timeStatEl.style.display = 'none';
     timebarOuterEl.style.display = 'none';
   }
+  resetHintTimer();
 }
 
 function endGame(){
   running = false;
   clearInterval(timerId);
+  clearTimeout(hintTimer);
+  clearHint();
   finalScoreEl.textContent = score;
   overlayTitleEl.textContent = '¡Se acabó el tiempo!';
   overlayMsgEl.textContent = score >= best && score > 0 ? '¡Nuevo mejor puntaje!' : '';
@@ -334,6 +387,8 @@ function endGame(){
 function backToModeSelect(){
   running = false;
   clearInterval(timerId);
+  clearTimeout(hintTimer);
+  clearHint();
   overlayEl.classList.add('hidden');
   modeSelectEl.classList.remove('hidden');
 }
