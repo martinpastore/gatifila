@@ -131,6 +131,12 @@ h1 span{ color: var(--accent); }
 }
 .cell.sel-ok{ transform: scale(0.94); box-shadow: 0 0 0 3px var(--ok) inset, 0 2px 0 var(--line); }
 .cell.sel-bad{ transform: scale(0.94); box-shadow: 0 0 0 3px var(--bad) inset, 0 2px 0 var(--line); }
+.cell.hint{ box-shadow: 0 0 0 3px var(--accent) inset, 0 2px 0 var(--line); }
+.cell.hint .cat{ animation: hintBounce 0.9s ease-in-out infinite; }
+@keyframes hintBounce{
+  0%, 100%{ transform: scale(1); }
+  50%{ transform: scale(1.15); }
+}
 .cell.pop .cat{ animation: pop 0.32s ease forwards; }
 @keyframes pop{
   0%{ transform: scale(1); opacity:1; }
